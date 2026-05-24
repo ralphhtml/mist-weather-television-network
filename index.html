@@ -241,6 +241,12 @@ body::before{
 const API='https://api.mistweather.com/api/v1.5/';
 const ASSETS=API+'assets/';
 const FALLBACK=id=>`https://stream.mistweather.com/hls/${id}/index.m3u8`;
+const PROXY='https://corsproxy.io/?url=';
+async function apiFetch(path){
+  const url=API+path;
+  try{const r=await fetch(url);if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}
+  catch(e){const r=await fetch(PROXY+encodeURIComponent(url));if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}
+}
 
 let store={}, all=[], live=[], shown=[];
 let filterCat=null, filterLive=false, ddOpen=false, hlsInst=null;
@@ -248,7 +254,7 @@ let filterCat=null, filterLive=false, ddOpen=false, hlsInst=null;
 /* ── Boot ── */
 async function boot(){
   try{
-    const r=await fetch(API+'channels');
+    const r={ok:true,json:async()=>await apiFetch('channels')};
     if(!r.ok)throw new Error('HTTP '+r.status);
     all=(await r.json()).sort((a,b)=>a.number-b.number);
     all.forEach(c=>store[c.id]=c);
@@ -361,7 +367,7 @@ async function openPlayer(ch){
   let url=ch.streamUrl||ch.hls_url||ch.stream||ch.url||null;
   if(!url){
     try{
-      const d=await fetch(API+'channels/'+ch.id).then(r=>r.json());
+      const d=await apiFetch('channels/'+ch.id);
       url=d.streamUrl||d.hls_url||d.stream||d.url||null;
     }catch{}
   }
