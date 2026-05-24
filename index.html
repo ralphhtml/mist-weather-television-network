@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mist Television Network</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --mist-blue: #48cae4;
+      --mist-deep: #023e8a;
+      --mist-dark: #010d1f;
+      --live-green: #00e676;
+      --text-sec: #b0c4de;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--mist-dark);
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      overflow: hidden;
+    }
+
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      background-image: url('app/src/main/res/drawable/bg_halftone.png');
+      background-size: cover;
+      background-position: center;
+      filter: brightness(0.55) saturate(1.2);
+      z-index: 0;
+    }
+
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        to bottom,
+        rgba(1, 13, 31, 0.3) 0%,
+        rgba(1, 13, 31, 0.1) 40%,
+        rgba(1, 13, 31, 0.7) 80%,
+        rgba(1, 13, 31, 1)   100%
+      );
+      z-index: 1;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .logo-img {
+      height: 80px;
+      mix-blend-mode: screen;
+      filter: drop-shadow(0 0 20px rgba(72, 202, 228, 0.5));
+    }
+
+    .brand-name {
+      font-size: 2rem;
+      font-weight: 200;
+      letter-spacing: 0.18em;
+      color: #fff;
+      text-shadow: 0 0 30px rgba(72, 202, 228, 0.4);
+    }
+
+    .hero-tagline {
+      font-size: 1.05rem;
+      color: var(--text-sec);
+      letter-spacing: 0.08em;
+      margin-bottom: 2.5rem;
+    }
+
+    .badge-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 2.8rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+    }
+
+    .badge-live {
+      background: rgba(0, 230, 118, 0.15);
+      border: 1px solid var(--live-green);
+      color: var(--live-green);
+    }
+
+    .badge-tv {
+      background: rgba(72, 202, 228, 0.12);
+      border: 1px solid var(--mist-blue);
+      color: var(--mist-blue);
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .cta-btn {
+      display: inline-block;
+      padding: 14px 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--mist-blue), var(--mist-deep));
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-decoration: none;
+      box-shadow: 0 0 32px rgba(72, 202, 228, 0.3);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .cta-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 48px rgba(72, 202, 228, 0.5);
+    }
+
+    .scroll-hint {
+      position: absolute;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      color: var(--text-sec);
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      opacity: 0.7;
+    }
+
+    .scroll-arrow {
+      width: 20px;
+      height: 20px;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      transform: rotate(45deg);
+      animation: bounce 1.4s ease-in-out infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: rotate(45deg) translateY(0); }
+      50% { transform: rotate(45deg) translateY(5px); }
+    }
+
+    /* ── Features ── */
+    .features {
+      padding: 5rem 2rem;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      text-align: center;
+      font-size: 0.75rem;
+      letter-spacing: 0.25em;
+      color: var(--mist-blue);
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 300;
+      margin-bottom: 3rem;
+      color: #fff;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(72, 202, 228, 0.15);
+      border-radius: 12px;
+      padding: 1.8rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .card:hover {
+      border-color: rgba(72, 202, 228, 0.4);
+      background: rgba(72, 202, 228, 0.06);
+    }
+
+    .card-icon {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+
+    .card-desc {
+      font-size: 0.875rem;
+      color: var(--text-sec);
+      line-height: 1.6;
+    }
+
+    /* ── Screen mockup ── */
+    .mockup-section {
+      padding: 4rem 2rem;
+      background: linear-gradient(to bottom, transparent, rgba(2, 62, 138, 0.12), transparent);
+    }
+
+    .mockup-wrap {
+      max-width: 780px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .tv-frame {
+      position: relative;
+      background: #0a1a2e;
+      border: 2px solid rgba(72, 202, 228, 0.25);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow:
+        0 0 0 8px #060f1d,
+        0 0 0 10px rgba(72, 202, 228, 0.1),
+        0 40px 80px rgba(0, 0, 0, 0.8);
+    }
+
+    .tv-screen {
+      background: #010d1f;
+      border-radius: 6px;
+      overflow: hidden;
+      aspect-ratio: 16/9;
+    }
+
+    .tv-ui {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* mock top bar */
+    .mock-topbar {
+      background: rgba(1, 8, 18, 0.9);
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(72, 202, 228, 0.1);
+    }
+
+    .mock-tab {
+      font-size: 0.6rem;
+      padding: 3px 10px;
+      border-radius: 4px;
+      color: var(--mist-blue);
+      background: rgba(72, 202, 228, 0.15);
+      border: 1px solid rgba(72, 202, 228, 0.4);
+      font-weight: 600;
+    }
+
+    .mock-tab-inactive {
+      color: #888;
+      background: transparent;
+      border-color: transparent;
+    }
+
+    .mock-logo {
+      margin-left: auto;
+      height: 18px;
+      mix-blend-mode: screen;
+    }
+
+    .mock-brand {
+      font-size: 0.55rem;
+      color: #ccc;
+      letter-spacing: 0.1em;
+      font-weight: 300;
+    }
+
+    /* mock previews */
+    .mock-previews {
+      padding: 8px 16px;
+      display: flex;
+      gap: 6px;
+    }
+
+    .mock-preview {
+      width: 80px;
+      height: 45px;
+      border-radius: 4px;
+      background: linear-gradient(135deg, #0a3060, #1a5080);
+      border: 1px solid rgba(72, 202, 228, 0.2);
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .mock-preview:first-child {
+      border-color: var(--mist-blue);
+    }
+
+    .mock-preview-live {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      background: var(--live-green);
+      color: #000;
+      font-size: 0.35rem;
+      font-weight: 900;
+      padding: 1px 3px;
+      border-radius: 2px;
+    }
+
+    .mock-preview-title {
+      position: absolute;
+      bottom: 3px;
+      left: 3px;
+      right: 3px;
+      font-size: 0.35rem;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* mock filter */
+    .mock-filter {
+      padding: 4px 16px;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .mock-pill {
+      font-size: 0.45rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(72,202,228,0.25);
+      color: #aaa;
+    }
+
+    .mock-pill-active {
+      border-color: var(--mist-blue);
+      color: var(--mist-blue);
+      background: rgba(72, 202, 228, 0.1);
+    }
+
+    /* mock channel list */
+    .mock-channels {
+      flex: 1;
+      padding: 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      overflow: hidden;
+    }
+
+    .mock-ch {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      border-radius: 3px;
+      font-size: 0.45rem;
+    }
+
+    .mock-ch-focused {
+      background: rgba(72, 202, 228, 0.1);
+      border: 1px solid rgba(72, 202, 228, 0.3);
+    }
+
+    .mock-ch-num { color: var(--mist-blue); font-weight: 700; width: 18px; }
+    .mock-ch-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .mock-ch-title { color: #ddd; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mock-ch-live { color: var(--live-green); font-weight: 700; margin-left: auto; }
+    .mock-ch-off { color: #444; margin-left: auto; }
+
+    .tv-stand {
+      width: 60px;
+      height: 12px;
+      background: #060f1d;
+      margin: 0 auto;
+      border-radius: 0 0 4px 4px;
+    }
+
+    .tv-base {
+      width: 120px;
+      height: 6px;
+      background: rgba(72, 202, 228, 0.15);
+      margin: 0 auto;
+      border-radius: 3px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 3rem 1rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      color: var(--text-sec);
+      font-size: 0.8rem;
+    }
+
+    footer .logo-row {
+      margin-bottom: 0.75rem;
+    }
+
+    footer .logo-img {
+      height: 36px;
+    }
+
+    footer .brand-name {
+      font-size: 1rem;
+    }
+
+    footer p {
+      margin-top: 0.5rem;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-overlay"></div>
+
+    <div class="hero-content">
+      <div class="logo-row">
+        <img class="logo-img" src="app/src/main/res/drawable/logo_mist.png" alt="Mist" />
+        <span class="brand-name">Television Network</span>
+      </div>
+
+      <p class="hero-tagline">Weather &amp; independent streaming — built for the big screen.</p>
+
+      <div class="badge-row">
+        <span class="badge badge-live"><span class="badge-dot"></span>Live Channels</span>
+        <span class="badge badge-tv">Android TV</span>
+        <span class="badge badge-tv">D-Pad Native</span>
+      </div>
+
+      <a class="cta-btn" href="https://github.com/ralphhtml/mist-weather-television-network">
+        View on GitHub
+      </a>
+    </div>
+
+    <div class="scroll-hint">
+      <span>EXPLORE</span>
+      <div class="scroll-arrow"></div>
+    </div>
+  </section>
+
+  <!-- ── Features ── -->
+  <section class="features">
+    <p class="section-label">What's inside</p>
+    <h2 class="section-title">Everything you need on your TV</h2>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-icon">📡</div>
+        <div class="card-title">Live Channel Directory</div>
+        <div class="card-desc">Browse dozens of independent weather, entertainment, and local channels sorted by channel number with live status indicators.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">▶</div>
+        <div class="card-title">Stream Previews</div>
+        <div class="card-desc">Horizontal row of muted live previews above the channel list. Focus a card and the stream starts playing instantly.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎛️</div>
+        <div class="card-title">Category Filters</div>
+        <div class="card-desc">Filter by genre, toggle live-only view, and narrow down channels to exactly what you want to watch.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🌩️</div>
+        <div class="card-title">Radar &amp; Forecast</div>
+        <div class="card-desc">Dedicated tab for weather radar and forecast data — coming soon.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📺</div>
+        <div class="card-title">TV-First UX</div>
+        <div class="card-desc">Full D-pad navigation, focus rings, and 10-foot viewing design. Built with Jetpack Compose for TV.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎨</div>
+        <div class="card-title">Mist Branding</div>
+        <div class="card-desc">Blue halftone background, the official mist logo, and a dark color scheme purpose-built for large screens.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Mockup ── -->
+  <section class="mockup-section">
+    <div class="mockup-wrap">
+      <p class="section-label">Interface preview</p>
+      <h2 class="section-title" style="margin-bottom:2rem;">Designed for the living room</h2>
+
+      <div class="tv-frame">
+        <div class="tv-screen">
+          <div class="tv-ui">
+
+            <!-- Top bar -->
+            <div class="mock-topbar">
+              <div class="mock-tab">Home</div>
+              <div class="mock-tab mock-tab-inactive">Radar / Forecast</div>
+              <img class="mock-logo" src="app/src/main/res/drawable/logo_mist.png" alt="mist" />
+              <span class="mock-brand">Television Network</span>
+            </div>
+
+            <!-- Previews -->
+            <div class="mock-previews">
+              <div class="mock-preview">
+                <div class="mock-preview-live">LIVE</div>
+                <div class="mock-preview-title">IntelliSTAR 2 xD</div>
+              </div>
+              <div class="mock-preview">
+                <div class="mock-preview-live">LIVE</div>
+                <div class="mock-preview-title">WJFL-TV Memphis</div>
+              </div>
+              <div class="mock-preview">
+                <div class="mock-preview-live">LIVE</div>
+                <div class="mock-preview-title">METEOchannel</div>
+              </div>
+              <div class="mock-preview">
+                <div class="mock-preview-live">LIVE</div>
+                <div class="mock-preview-title">WeatherZone Tampa</div>
+              </div>
+              <div class="mock-preview">
+                <div class="mock-preview-live">LIVE</div>
+                <div class="mock-preview-title">Jolt Network</div>
+              </div>
+            </div>
+
+            <!-- Filter -->
+            <div class="mock-filter">
+              <span style="font-size:0.45rem;color:#666;">Filter:</span>
+              <div class="mock-pill mock-pill-active">All Categories ▾</div>
+              <div class="mock-pill">○ Live Now</div>
+            </div>
+
+            <!-- Channel list -->
+            <div class="mock-channels">
+              <div class="mock-ch mock-ch-focused">
+                <span class="mock-ch-num">4</span>
+                <div class="mock-ch-dot" style="background:var(--live-green)"></div>
+                <span class="mock-ch-title">IntelliSTAR 2 xD | Greenville, SC | WKOD-TV/DT</span>
+                <span class="mock-ch-live">● LIVE</span>
+              </div>
+              <div class="mock-ch">
+                <span class="mock-ch-num">7</span>
+                <div class="mock-ch-dot" style="background:var(--live-green)"></div>
+                <span class="mock-ch-title">WJFL-TV | IntelliSTAR 2 xD | Memphis, TN</span>
+                <span class="mock-ch-live">● LIVE</span>
+              </div>
+              <div class="mock-ch">
+                <span class="mock-ch-num">10</span>
+                <div class="mock-ch-dot" style="background:var(--live-green)"></div>
+                <span class="mock-ch-title">ntn24: your local information channel</span>
+                <span class="mock-ch-live">● LIVE</span>
+              </div>
+              <div class="mock-ch">
+                <span class="mock-ch-num">11</span>
+                <div class="mock-ch-dot" style="background:var(--live-green)"></div>
+                <span class="mock-ch-title">Jolt Network</span>
+                <span class="mock-ch-live">● LIVE</span>
+              </div>
+              <div class="mock-ch">
+                <span class="mock-ch-num">14</span>
+                <div class="mock-ch-dot" style="background:#333"></div>
+                <span class="mock-ch-title">LCN</span>
+                <span class="mock-ch-off">○ OFF</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+      <div class="tv-stand"></div>
+      <div class="tv-base"></div>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer>
+    <div class="logo-row">
+      <img class="logo-img" src="app/src/main/res/drawable/logo_mist.png" alt="Mist" />
+      <span class="brand-name">Television Network</span>
+    </div>
+    <p>Open source · Android TV · Jetpack Compose</p>
+  </footer>
+
+</body>
+</html>
