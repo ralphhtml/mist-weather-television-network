@@ -3,49 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Robot Tag — a Gorilla Tag-inspired mini game</title>
+<title>Robot Tag — Gorilla Tag hand-locomotion, in 2D</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
     font-family: "Trebuchet MS", system-ui, sans-serif;
-    background: #0d1b0f;
-    color: #eaffea;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100%;
-    overflow: hidden;
-    user-select: none;
+    background: #0b1016;
+    color: #eaf4ff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100%; overflow: hidden; user-select: none;
   }
-  h1 { font-size: 1.4rem; margin: 10px 0 4px; letter-spacing: 1px; }
-  #hud { font-size: .9rem; opacity: .85; margin-bottom: 8px; }
+  h1 { font-size: 1.3rem; margin: 8px 0 2px; letter-spacing: 1px; }
+  #hud { font-size: .85rem; opacity: .85; margin-bottom: 6px; }
   #hud b { color: #ffd166; }
   canvas {
-    background: linear-gradient(#2b3a48 0%, #34506b 55%, #1c2a36 100%);
-    border: 4px solid #3a4a58;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,.5);
-    touch-action: none;
-    max-width: 95vw;
-    max-height: 70vh;
+    background: linear-gradient(#243447 0%, #16222e 60%, #0d151c 100%);
+    border: 4px solid #33465a; border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.55);
+    touch-action: none; max-width: 96vw; max-height: 70vh; cursor: crosshair;
   }
-  #help { font-size: .8rem; opacity: .7; margin-top: 10px; text-align: center; line-height: 1.5; }
-  kbd {
-    background: #1e3320; border: 1px solid #3d5a3f; border-radius: 4px;
-    padding: 1px 6px; font-size: .75rem;
-  }
+  #help { font-size: .78rem; opacity: .72; margin-top: 8px; text-align: center; line-height: 1.55; max-width: 640px; }
+  kbd { background: #1b2733; border: 1px solid #33465a; border-radius: 4px; padding: 1px 6px; font-size: .72rem; }
   #overlay {
     position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; background: rgba(0,0,0,.75);
-    text-align: center; gap: 14px;
+    align-items: center; justify-content: center; background: rgba(6,10,14,.82);
+    text-align: center; gap: 12px; padding: 20px;
   }
-  #overlay h2 { font-size: 2rem; color: #ffd166; }
+  #overlay h2 { font-size: 1.9rem; color: #ffd166; }
+  #overlay p { max-width: 480px; line-height: 1.5; opacity: .9; }
   #overlay button {
     font: inherit; font-size: 1rem; padding: 10px 26px; cursor: pointer;
-    background: #ffd166; color: #22331f; border: none; border-radius: 8px;
-    font-weight: bold;
+    background: #ffd166; color: #22331f; border: none; border-radius: 8px; font-weight: bold;
   }
   #overlay button:hover { background: #ffdd85; }
   .hidden { display: none !important; }
@@ -53,275 +42,326 @@
 </head>
 <body>
   <h1>🤖 ROBOT TAG</h1>
-  <div id="hud">Round: <b id="round">1</b> &nbsp;•&nbsp; Best survival: <b id="best">0.0s</b> &nbsp;•&nbsp; Status: <b id="status">RUNNER</b></div>
-  <canvas id="game" width="720" height="440"></canvas>
+  <div id="hud">Survived: <b id="time">0.0s</b> &nbsp;•&nbsp; Best: <b id="best">0.0s</b> &nbsp;•&nbsp; Grip: <b id="grip">—</b></div>
+  <canvas id="game" width="760" height="460"></canvas>
   <div id="help">
-    Boost through the factory with momentum. <kbd>A</kbd>/<kbd>←</kbd> and <kbd>D</kbd>/<kbd>→</kbd> to move,
-    <kbd>Space</kbd>/<kbd>W</kbd>/<kbd>↑</kbd> to jump off platforms.<br>
-    You're the runner — dodge the <b style="color:#ff6b6b">corrupted robot</b>. Survive as long as you can!
+    <b>No arrow keys.</b> You move like a gorilla — with your hands. Aim with the mouse and
+    <b>hold a button to grab</b> the metal walls: <kbd>Left-click</kbd> = left hand, <kbd>Right-click</kbd> = right hand.
+    Drag while gripping to <b>pull &amp; sling</b> your body, then <b>let go</b> to fling off with your momentum.
+    Alternate hands to climb. Outrun the red robot!<br>
+    <span style="opacity:.7">Touch: one finger = left hand, two fingers = right hand.</span>
   </div>
 
   <div id="overlay">
     <h2 id="ovTitle">ROBOT TAG</h2>
-    <p id="ovText">Outrun the corrupted robot. Momentum is everything — build speed and leap between platforms.</p>
+    <p id="ovText">A 2D take on Gorilla Tag's real hand-locomotion. Grab surfaces, sling your body by dragging, and release to launch with the momentum you built — exactly like the VR game. Outrun the corrupted robot.</p>
     <button id="startBtn">START</button>
   </div>
 
 <script>
+/*
+  Movement faithfully ported (in 2D) from GorillaLocomotion/Player.cs (Another Axiom):
+   - Hands grab surfaces and "stick" as anchor points.
+   - While gripping, moving your hand pulls the body: bodyMove = anchor - currentHandPos
+     (Player.cs firstIterationHand = lastHandPosition - CurrentHandPosition()).
+   - Body velocity is zeroed while gripping; on release, if the averaged recent velocity
+     exceeds velocityLimit you launch at jumpMultiplier * avgVel, capped at maxJumpSpeed.
+   - maxArmLength clamps hand reach; a small slide factor keeps grips from being 100% rigid.
+*/
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const W = canvas.width, H = canvas.height;
 
-const roundEl = document.getElementById('round');
+const timeEl = document.getElementById('time');
 const bestEl = document.getElementById('best');
-const statusEl = document.getElementById('status');
+const gripEl = document.getElementById('grip');
 const overlay = document.getElementById('overlay');
 const ovTitle = document.getElementById('ovTitle');
 const ovText = document.getElementById('ovText');
 const startBtn = document.getElementById('startBtn');
 
-const GRAVITY = 0.6;
-const MOVE_ACCEL = 0.9;
-const FRICTION = 0.85;      // ground friction (slippery = momentum)
-const AIR_FRICTION = 0.98;
-const MAX_SPEED = 9;
-const JUMP_V = -13;
+// ---- constants (Player.cs analogues, scaled ~60px = 1m) ----
+const GRAVITY = 0.55;
+const MAX_ARM = 92;          // maxArmLength
+const GRAB_DIST = 26;        // how close a hand must be to a surface to stick
+const VEL_LIMIT = 1.6;       // velocityLimit: min swing speed to convert to a launch
+const JUMP_MULT = 1.12;      // jumpMultiplier
+const MAX_JUMP = 19;         // maxJumpSpeed
+const SLIDE = 0.06;          // defaultSlideFactor: grips aren't perfectly rigid
+const HIST = 8;              // velocityHistorySize
+const BODY_R = 16;
 
-// Platforms (x, y, w, h)
-const platforms = [
-  {x:0,   y:410, w:720, h:30},   // ground
-  {x:80,  y:330, w:130, h:16},
-  {x:300, y:280, w:140, h:16},
-  {x:540, y:340, w:150, h:16},
-  {x:200, y:200, w:120, h:16},
-  {x:430, y:170, w:140, h:16},
-  {x:40,  y:150, w:100, h:16},
-  {x:600, y:210, w:100, h:16},
+// ---- level: metal walls/girders (grabbable surfaces) ----
+const walls = [
+  {x:0,   y:0,   w:760, h:22},   // ceiling
+  {x:0,   y:438, w:760, h:22},   // floor
+  {x:0,   y:0,   w:22,  h:460},  // left wall
+  {x:738, y:0,   w:22,  h:460},  // right wall
+  {x:150, y:150, w:120, h:20},
+  {x:360, y:90,  w:110, h:20},
+  {x:540, y:180, w:150, h:20},
+  {x:110, y:300, w:130, h:20},
+  {x:330, y:250, w:120, h:20},
+  {x:520, y:330, w:140, h:20},
+  {x:250, y:390, w:90,  h:20},
 ];
 
-function makeBot(x, y, color, isRunner) {
-  return { x, y, w:34, h:34, vx:0, vy:0, onGround:false, color, isRunner, blink:0 };
-}
+function makeHand() { return { x:0, y:0, gripping:false, ax:0, ay:0 }; }
 
-let player, enemy, keys, running, startTime, roundNum, best;
+let player, hands, enemy, best, running, startTime;
+let mouse = { x: W*0.3, y: H*0.5 };
+let pressLeft = false, pressRight = false;
 
-function reset(full) {
-  player = makeBot(60, 360, '#4dd0e1', true);
-  enemy  = makeBot(640, 360, '#ff6b6b', false);
-  keys = {};
+function reset() {
+  player = { x: 90, y: 380, vx:0, vy:0, hist: Array.from({length:HIST}, ()=>({x:0,y:0})), hi:0, last:{x:90,y:380} };
+  hands = { left: makeHand(), right: makeHand() };
+  enemy = { x: 660, y: 380, vx:0, vy:0, onGround:false };
   running = true;
   startTime = performance.now();
-  if (full) { roundNum = 1; best = 0; }
-  statusEl.textContent = 'RUNNER';
-  statusEl.style.color = '#eaffea';
-  roundEl.textContent = roundNum;
+  pressLeft = pressRight = false;
 }
 
-function rectHit(a, b) {
-  return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
-}
-
-function physics(ape, ctrl) {
-  // horizontal control
-  if (ctrl) {
-    if (keys.left)  ape.vx -= MOVE_ACCEL;
-    if (keys.right) ape.vx += MOVE_ACCEL;
-    if (keys.jump && ape.onGround) { ape.vy = JUMP_V; ape.onGround = false; }
+// nearest point on a rectangle to p, plus whether p is within `dist`
+function surfaceGrab(px, py) {
+  let best = null, bestD = GRAB_DIST;
+  for (const r of walls) {
+    const cx = Math.max(r.x, Math.min(px, r.x + r.w));
+    const cy = Math.max(r.y, Math.min(py, r.y + r.h));
+    const d = Math.hypot(px - cx, py - cy);
+    if (d < bestD) { bestD = d; best = {x:cx, y:cy}; }
   }
-  ape.vx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, ape.vx));
-  ape.vy += GRAVITY;
+  return best;
+}
 
-  // horizontal move + wall bounds
-  ape.x += ape.vx;
-  if (ape.x < 0) { ape.x = 0; ape.vx *= -0.4; }
-  if (ape.x + ape.w > W) { ape.x = W - ape.w; ape.vx *= -0.4; }
+function armClamp(hx, hy) {
+  const dx = hx - player.x, dy = hy - player.y;
+  const d = Math.hypot(dx, dy);
+  if (d <= MAX_ARM || d === 0) return { x: hx, y: hy };
+  return { x: player.x + dx / d * MAX_ARM, y: player.y + dy / d * MAX_ARM };
+}
 
-  // vertical move + platform collision
-  ape.y += ape.vy;
-  ape.onGround = false;
-  for (const p of platforms) {
-    if (rectHit(ape, p)) {
-      if (ape.vy > 0 && ape.y + ape.h - ape.vy <= p.y + 2) {
-        ape.y = p.y - ape.h; ape.vy = 0; ape.onGround = true;
-      } else if (ape.vy < 0 && ape.y - ape.vy >= p.y + p.h - 2) {
-        ape.y = p.y + p.h; ape.vy = 0;
-      }
+// keep body out of walls (circle vs rects) — mirrors head-collision check
+function resolveBody() {
+  for (const r of walls) {
+    const cx = Math.max(r.x, Math.min(player.x, r.x + r.w));
+    const cy = Math.max(r.y, Math.min(player.y, r.y + r.h));
+    let dx = player.x - cx, dy = player.y - cy;
+    let d = Math.hypot(dx, dy);
+    if (d < BODY_R) {
+      if (d === 0) { dx = 0; dy = -1; d = 1; }
+      const push = (BODY_R - d);
+      player.x += dx/d * push;
+      player.y += dy/d * push;
+      // kill velocity into the surface
+      const n = {x:dx/d, y:dy/d};
+      const vn = player.vx*n.x + player.vy*n.y;
+      if (vn < 0) { player.vx -= vn*n.x; player.vy -= vn*n.y; }
     }
   }
-  // friction
-  ape.vx *= ape.onGround ? FRICTION : AIR_FRICTION;
+}
+
+function updateHand(hand, pressed) {
+  // where the hand wants to be (aim at cursor, clamped to arm length)
+  const want = armClamp(mouse.x, mouse.y);
+
+  if (pressed) {
+    if (!hand.gripping) {
+      // try to stick: is the wanted hand pos touching a surface?
+      const g = surfaceGrab(want.x, want.y);
+      if (g) { hand.gripping = true; hand.ax = g.x; hand.ay = g.y; }
+      else { hand.x = want.x; hand.y = want.y; }
+    }
+    if (hand.gripping) {
+      // hand stays anchored; body is pulled so hand stays at anchor:
+      //   bodyMove = anchor - wantedHandPos   (Player.cs firstIterationHand)
+      // apply a little slide so it isn't perfectly rigid
+      let mvx = hand.ax - want.x;
+      let mvy = hand.ay - want.y;
+      player.x += mvx * (1 - SLIDE);
+      player.y += mvy * (1 - SLIDE);
+      player.vx = player.vy = 0; // velocity zeroed while gripping (rebuilt from movement)
+      hand.x = hand.ax; hand.y = hand.ay;
+    }
+  } else {
+    hand.gripping = false;
+    hand.x = want.x; hand.y = want.y;
+  }
+  return hand.gripping;
+}
+
+function storeVelocity() {
+  const cv = { x: (player.x - player.last.x), y: (player.y - player.last.y) };
+  player.hi = (player.hi + 1) % HIST;
+  player.hist[player.hi] = cv;
+  player.last = { x: player.x, y: player.y };
+}
+
+function avgVelocity() {
+  let ax = 0, ay = 0;
+  for (const v of player.hist) { ax += v.x; ay += v.y; }
+  return { x: ax / HIST, y: ay / HIST };
 }
 
 function enemyAI() {
-  // Chase the player with momentum; jump when player is above or a wall blocks.
-  const dir = Math.sign(player.x - enemy.x);
-  const speedFactor = 0.6 + roundNum * 0.12; // gets faster each round
-  enemy.vx += dir * MOVE_ACCEL * speedFactor;
-  const playerAbove = player.y + player.h < enemy.y - 10;
-  if (enemy.onGround && (playerAbove || Math.random() < 0.03)) {
-    enemy.vy = JUMP_V * (0.8 + Math.random()*0.3);
-    enemy.onGround = false;
+  // simple chaser that hops toward the player and gets slightly faster over time
+  const t = (performance.now() - startTime) / 1000;
+  const speed = 0.35 + Math.min(t * 0.02, 0.5);
+  enemy.vx += Math.sign(player.x - enemy.x) * speed;
+  enemy.vx = Math.max(-6.5, Math.min(6.5, enemy.vx));
+  enemy.vy += GRAVITY;
+  if (enemy.onGround && (player.y + 4 < enemy.y || Math.random() < 0.02)) {
+    enemy.vy = -12 - Math.random()*3; enemy.onGround = false;
   }
-  physics(enemy, false);
-}
-
-function drawBot(a) {
-  const cx = a.x + a.w/2;
-  // body (metal chassis)
-  ctx.fillStyle = a.color;
-  ctx.beginPath();
-  ctx.roundRect(a.x, a.y+13, a.w, a.h-13, 5);
-  ctx.fill();
-  // chest panel
-  ctx.fillStyle = 'rgba(0,0,0,.25)';
-  ctx.fillRect(a.x+6, a.y+18, a.w-12, 9);
-  // status light on chest
-  ctx.fillStyle = a.isRunner ? '#b9ff66' : '#ffdd55';
-  ctx.beginPath();
-  ctx.arc(cx, a.y+22, 2.5, 0, Math.PI*2);
-  ctx.fill();
-  // head (boxy)
-  ctx.fillStyle = a.color;
-  ctx.beginPath();
-  ctx.roundRect(a.x+6, a.y-2, a.w-12, 15, 3);
-  ctx.fill();
-  // antenna
-  ctx.strokeStyle = a.color;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(cx, a.y-2);
-  ctx.lineTo(cx, a.y-9);
-  ctx.stroke();
-  ctx.fillStyle = a.isRunner ? '#b9ff66' : '#ff3b3b';
-  ctx.beginPath();
-  ctx.arc(cx, a.y-10, 2.5, 0, Math.PI*2);
-  ctx.fill();
-  // visor eyes (glowing)
-  a.blink = (a.blink + 1) % 120;
-  const lit = a.blink > 8;
-  ctx.fillStyle = '#111';
-  ctx.fillRect(a.x+9, a.y+3, a.w-18, 6);
-  ctx.fillStyle = lit ? (a.isRunner ? '#66e0ff' : '#ff5252') : '#331111';
-  ctx.fillRect(cx-6, a.y+4, 4, 4);
-  ctx.fillRect(cx+2, a.y+4, 4, 4);
-}
-
-function drawFactory() {
-  // hanging cables / conduits
-  ctx.strokeStyle = 'rgba(80,110,140,.45)';
-  ctx.lineWidth = 4;
-  for (let i=0;i<6;i++){
-    const x = 40 + i*130;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.quadraticCurveTo(x+15, 60, x, 120);
-    ctx.stroke();
-  }
-  // platforms (steel girders)
-  for (const p of platforms) {
-    ctx.fillStyle = p.h > 20 ? '#37474f' : '#546e7a';
-    ctx.beginPath();
-    ctx.roundRect(p.x, p.y, p.w, p.h, 4);
-    ctx.fill();
-    // hazard stripe on top edge
-    ctx.fillStyle = 'rgba(255,209,102,.8)';
-    ctx.fillRect(p.x, p.y, p.w, 3);
-    // rivets
-    ctx.fillStyle = 'rgba(0,0,0,.3)';
-    for (let rx = p.x+8; rx < p.x+p.w-4; rx += 22) {
-      ctx.beginPath();
-      ctx.arc(rx, p.y + p.h/2 + 1, 1.6, 0, Math.PI*2);
-      ctx.fill();
+  enemy.x += enemy.vx; enemy.vy && (enemy.y += enemy.vy);
+  enemy.onGround = false;
+  for (const r of walls) {
+    if (enemy.x+14 > r.x && enemy.x-14 < r.x+r.w && enemy.y+16 > r.y && enemy.y-16 < r.y+r.h) {
+      // resolve vertically (simple)
+      if (enemy.vy > 0 && enemy.y < r.y) { enemy.y = r.y - 16; enemy.vy = 0; enemy.onGround = true; }
+      else if (enemy.vy < 0 && enemy.y > r.y) { enemy.y = r.y + r.h + 16; enemy.vy = 0; }
+      else { enemy.x -= enemy.vx; enemy.vx *= -0.3; } // bumped a wall side
     }
   }
+  enemy.vx *= enemy.onGround ? 0.86 : 0.99;
 }
 
-function endRound(caught) {
-  running = false;
-  const survived = (performance.now() - startTime) / 1000;
-  if (survived > best) best = survived;
-  bestEl.textContent = best.toFixed(1) + 's';
-  overlay.classList.remove('hidden');
-  if (caught) {
-    ovTitle.textContent = '⚡ TAGGED!';
-    ovText.textContent = `You survived ${survived.toFixed(1)}s. The robot got faster... try again?`;
-    startBtn.textContent = 'RETRY';
+function step() {
+  const gripL = updateHand(hands.left, pressLeft);
+  const gripR = updateHand(hands.right, pressRight);
+  const gripping = gripL || gripR;
+
+  if (!gripping) {
+    // free flight: gravity + momentum
+    player.vy += GRAVITY;
+    player.x += player.vx;
+    player.y += player.vy;
+    player.vx *= 0.995; // slight air drag
   }
+
+  resolveBody();
+  storeVelocity();
+
+  // on the frame we let go, convert built-up swing velocity into a launch
+  if (!gripping) {
+    // nothing special; velocity already carried
+  } else {
+    // while gripping, prime the launch velocity from recent hand-driven movement
+    const av = avgVelocity();
+    const mag = Math.hypot(av.x, av.y);
+    if (mag > VEL_LIMIT) {
+      let lvx = av.x * JUMP_MULT, lvy = av.y * JUMP_MULT;
+      const lm = Math.hypot(lvx, lvy);
+      if (lm > MAX_JUMP) { lvx = lvx/lm*MAX_JUMP; lvy = lvy/lm*MAX_JUMP; }
+      player.vx = lvx; player.vy = lvy; // stored, applied the moment you release
+    }
+  }
+
+  gripEl.textContent = gripL && gripR ? 'BOTH' : gripL ? 'LEFT' : gripR ? 'RIGHT' : '—';
+
+  enemyAI();
+
+  const t = (performance.now() - startTime) / 1000;
+  timeEl.textContent = t.toFixed(1) + 's';
+  if (t > best) { best = t; bestEl.textContent = best.toFixed(1) + 's'; }
+
+  if (Math.hypot(player.x - enemy.x, player.y - enemy.y) < BODY_R + 15) endGame(t);
+}
+
+// ---------- rendering ----------
+function drawWalls() {
+  for (const r of walls) {
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = 'rgba(255,209,102,.7)';
+    ctx.fillRect(r.x, r.y, r.w, 3);
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    for (let rx = r.x+8; rx < r.x+r.w-4; rx += 22) { ctx.beginPath(); ctx.arc(rx, r.y+r.h/2, 1.6, 0, 7); ctx.fill(); }
+  }
+}
+function drawArm(hand, color) {
+  ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(hand.x, hand.y); ctx.stroke();
+  // hand
+  ctx.fillStyle = hand.gripping ? '#b9ff66' : color;
+  ctx.beginPath(); ctx.arc(hand.x, hand.y, hand.gripping ? 8 : 6, 0, 7); ctx.fill();
+  if (hand.gripping) { ctx.strokeStyle = 'rgba(185,255,102,.5)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(hand.x, hand.y, 12, 0, 7); ctx.stroke(); }
+}
+function drawRobot(x, y, color, r) {
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.roundRect(x-r, y-2, r*2, r*1.3, 5); ctx.fill();       // body
+  ctx.beginPath(); ctx.roundRect(x-r*0.7, y-r-2, r*1.4, r, 3); ctx.fill();   // head
+  ctx.fillStyle = '#111'; ctx.fillRect(x-r*0.55, y-r+1, r*1.1, 5);          // visor
+  ctx.fillStyle = color==='#ff6b6b' ? '#ff5252' : '#66e0ff';
+  ctx.fillRect(x-r*0.35, y-r+2, 4, 3); ctx.fillRect(x+r*0.1, y-r+2, 4, 3);  // eyes
+  ctx.strokeStyle = color; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x,y-r-2); ctx.lineTo(x,y-r-8); ctx.stroke();
+  ctx.fillStyle = color==='#ff6b6b' ? '#ff3b3b' : '#b9ff66';
+  ctx.beginPath(); ctx.arc(x, y-r-9, 2.5, 0, 7); ctx.fill();
+}
+
+function render() {
+  ctx.clearRect(0,0,W,H);
+  drawWalls();
+  // enemy
+  drawRobot(enemy.x, enemy.y, '#ff6b6b', 15);
+  // player arms behind body
+  drawArm(hands.left, '#4dd0e1');
+  drawArm(hands.right, '#26a69a');
+  drawRobot(player.x, player.y, '#4dd0e1', BODY_R-2);
+  // reticle
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 7, 0, 7); ctx.stroke();
 }
 
 function loop() {
-  if (running) {
-    physics(player, true);
-    enemyAI();
-
-    // survive long enough -> advance a round (faster enemy)
-    const survived = (performance.now() - startTime) / 1000;
-    if (survived > best) { best = survived; bestEl.textContent = best.toFixed(1)+'s'; }
-    if (survived > 10 * roundNum) {
-      roundNum++;
-      roundEl.textContent = roundNum;
-      // flash status
-      statusEl.textContent = 'ROUND ' + roundNum + '!';
-      statusEl.style.color = '#ffd166';
-      setTimeout(()=>{ if(running){ statusEl.textContent='RUNNER'; statusEl.style.color='#eaffea';} }, 900);
-    }
-
-    if (rectHit(player, enemy)) endRound(true);
-  }
-
-  ctx.clearRect(0,0,W,H);
-  drawFactory();
-  drawBot(enemy);
-  drawBot(player);
-
-  // survival timer
-  if (running) {
-    const t = ((performance.now()-startTime)/1000).toFixed(1);
-    ctx.fillStyle = 'rgba(0,0,0,.35)';
-    ctx.font = 'bold 20px Trebuchet MS';
-    ctx.fillText('⏱ ' + t + 's', 14, 30);
-  }
+  if (running) step();
+  render();
   requestAnimationFrame(loop);
 }
 
-// Input
-function setKey(e, down) {
-  const k = e.key.toLowerCase();
-  if (k==='a'||k==='arrowleft')  keys.left = down;
-  if (k==='d'||k==='arrowright') keys.right = down;
-  if (k===' '||k==='w'||k==='arrowup') { keys.jump = down; if(down) e.preventDefault(); }
+function endGame(t) {
+  running = false;
+  ovTitle.textContent = '⚡ TAGGED!';
+  ovText.textContent = `You survived ${t.toFixed(1)}s. Grab, sling, release — build more momentum to escape. Try again?`;
+  startBtn.textContent = 'RETRY';
+  overlay.classList.remove('hidden');
 }
-addEventListener('keydown', e=>setKey(e,true));
-addEventListener('keyup',   e=>setKey(e,false));
 
-// Touch controls (tap left/right half to move, tap top to jump)
-canvas.addEventListener('touchstart', e=>{
+// ---------- input ----------
+function toCanvas(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  mouse.x = (clientX - r.left) * (W / r.width);
+  mouse.y = (clientY - r.top) * (H / r.height);
+}
+canvas.addEventListener('mousemove', e => toCanvas(e.clientX, e.clientY));
+canvas.addEventListener('mousedown', e => {
+  toCanvas(e.clientX, e.clientY);
+  if (e.button === 0) pressLeft = true;
+  if (e.button === 2) pressRight = true;
   e.preventDefault();
-  for (const t of e.touches) {
-    const r = canvas.getBoundingClientRect();
-    const x = (t.clientX - r.left) / r.width;
-    const y = (t.clientY - r.top) / r.height;
-    if (y < 0.4) keys.jump = true;
-    else if (x < 0.5) keys.left = true;
-    else keys.right = true;
-  }
-}, {passive:false});
-canvas.addEventListener('touchend', e=>{
-  e.preventDefault();
-  keys.left = keys.right = keys.jump = false;
-}, {passive:false});
-
-startBtn.addEventListener('click', ()=>{
-  overlay.classList.add('hidden');
-  const full = !roundNum || startBtn.textContent === 'START';
-  reset(true);
 });
+addEventListener('mouseup', e => { if (e.button===0) pressLeft=false; if (e.button===2) pressRight=false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-// init idle state
-roundNum = 1; best = 0;
-player = makeBot(60,360,'#4dd0e1',true);
-enemy  = makeBot(640,360,'#ff6b6b',false);
-keys = {}; running = false; startTime = performance.now();
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t0 = e.touches[0]; if (t0) toCanvas(t0.clientX, t0.clientY);
+  pressLeft = e.touches.length >= 1;
+  pressRight = e.touches.length >= 2;
+}, {passive:false});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t0 = e.touches[0]; if (t0) toCanvas(t0.clientX, t0.clientY);
+}, {passive:false});
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  pressLeft = e.touches.length >= 1;
+  pressRight = e.touches.length >= 2;
+}, {passive:false});
+
+startBtn.addEventListener('click', () => { overlay.classList.add('hidden'); reset(); });
+
+// idle boot
+best = 0; reset(); running = false;
 loop();
 </script>
 </body>
