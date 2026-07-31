@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robot Tag 3D — first-person Gorilla Tag hand-locomotion</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #0b1016; color: #eaf4ff;
+    font-family: "Trebuchet MS", system-ui, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+  #hud { position: fixed; top: 12px; left: 12px; font-size: .9rem; text-shadow: 0 1px 3px #000; pointer-events: none; }
+  #hud b { color: #ffd166; }
+  #reticle {
+    position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px;
+    pointer-events: none; opacity: .9;
+  }
+  #reticle::before, #reticle::after {
+    content: ""; position: absolute; background: #eaf4ff; box-shadow: 0 0 3px #000;
+  }
+  #reticle::before { left: 10px; top: 2px; width: 2px; height: 18px; }
+  #reticle::after  { top: 10px; left: 2px; height: 2px; width: 18px; }
+  #reticle.reach::before, #reticle.reach::after { background: #b9ff66; }
+  #hands { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+    font-size: .8rem; opacity: .8; text-shadow: 0 1px 3px #000; }
+  .on { color: #b9ff66; font-weight: bold; }
+  .off { opacity: .5; }
+  #overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; background: rgba(6,10,14,.86); text-align: center; gap: 14px; padding: 24px; z-index: 5;
+  }
+  #overlay h1 { font-size: 2rem; color: #ffd166; }
+  #overlay p { max-width: 560px; line-height: 1.6; opacity: .92; }
+  #overlay .keys { font-size: .9rem; opacity: .85; line-height: 1.9; }
+  kbd { background: #1b2733; border: 1px solid #33465a; border-radius: 4px; padding: 1px 7px; font-size: .8rem; }
+  #overlay button { font: inherit; font-size: 1.05rem; padding: 12px 30px; cursor: pointer;
+    background: #ffd166; color: #22331f; border: none; border-radius: 9px; font-weight: bold; }
+  #overlay button:hover { background: #ffdd85; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  🤖 <b>ROBOT TAG 3D</b><br>
+  Survived: <b id="time">0.0s</b><br>
+  Best: <b id="best">0.0s</b><br>
+  Speed: <b id="speed">0.0</b> m/s
+</div>
+<div id="reticle"></div>
+<div id="hands">
+  <span id="hL" class="off">◀ L-HAND</span> &nbsp;•&nbsp; <span id="hR" class="off">R-HAND ▶</span>
+</div>
+
+<div id="overlay">
+  <h1>🤖 ROBOT TAG 3D</h1>
+  <p>A first-person take on Gorilla Tag's real hand-locomotion. There is <b>no walking</b> — you move by
+     <b>grabbing surfaces and slinging your body</b>. Grab a rock, pull/swing, release to fling off with your momentum.
+     Climb, leap, and outrun the <b style="color:#ff6b6b">red robot</b>.</p>
+  <div class="keys">
+    <kbd>Mouse</kbd> look &nbsp; <kbd>Left-click hold</kbd> grab with left hand &nbsp; <kbd>Right-click hold</kbd> grab with right hand<br>
+    <kbd>W A S D</kbd> steer your body while gripping &nbsp; <kbd>Space</kbd> pull toward your grip (climb) &nbsp; <kbd>Esc</kbd> release mouse
+  </div>
+  <button id="startBtn">CLICK TO PLAY</button>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/*
+  Hand-locomotion in the spirit of GorillaLocomotion/Player.cs (Another Axiom):
+   - Hands raycast to nearby surfaces and "stick" as anchors (within maxArmLength).
+   - While gripping, gravity is reduced and you pull your body toward/around the anchor
+     — building momentum — with the grip acting as a max-length rope constraint.
+   - On release you keep that momentum (fling), capped at a max speed. No walking.
+*/
+
+const app = document.getElementById('app');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const timeEl = document.getElementById('time');
+const bestEl = document.getElementById('best');
+const speedEl = document.getElementById('speed');
+const reticle = document.getElementById('reticle');
+const hLEl = document.getElementById('hL');
+const hREl = document.getElementById('hR');
+
+// ---- renderer / scene ----
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fd0e6);
+scene.fog = new THREE.Fog(0x9fd0e6, 40, 160);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 500);
+
+// yaw/pitch rig for mouse look
+const yawObj = new THREE.Object3D();
+const pitchObj = new THREE.Object3D();
+yawObj.add(pitchObj);
+pitchObj.add(camera);
+scene.add(yawObj);
+
+// ---- lights ----
+scene.add(new THREE.HemisphereLight(0xbfe3ff, 0x4a5a3a, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+sun.position.set(30, 60, 20); sun.castShadow = true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.left=-80; sun.shadow.camera.right=80; sun.shadow.camera.top=80; sun.shadow.camera.bottom=-80;
+scene.add(sun);
+
+// ---- ground ----
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(120, 48),
+  new THREE.MeshStandardMaterial({ color: 0x5a8f3a })
+);
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
+scene.add(ground);
+
+// ---- grabbable obstacles (rocks / boulders / pillars) ----
+const grabbables = [ground];
+function rock(x, z, r, h, color) {
+  const geo = h ? new THREE.CylinderGeometry(r, r*1.15, h, 7)
+                : new THREE.IcosahedronGeometry(r, 0);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, flatShading:true, roughness:.95 }));
+  m.position.set(x, h ? h/2 : r*0.7, z);
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m); grabbables.push(m);
+  return m;
+}
+// a climbable arena
+const palette = [0x8a8f96, 0x9a7b5a, 0x7d8a6b, 0xa08a7a];
+const rng = (a,b)=>a+Math.random()*(b-a);
+for (let i=0;i<26;i++){
+  const a = Math.random()*Math.PI*2, d = rng(8, 70);
+  const x = Math.cos(a)*d, z = Math.sin(a)*d;
+  const tall = Math.random() < .5;
+  rock(x, z, rng(1.6, 3.2), tall ? rng(4, 14) : 0, palette[i%palette.length]);
+}
+// central climbing tower
+rock(0, 0, 3.2, 20, 0x8a8f96);
+rock(2.5, 2.5, 2.2, 12, 0x7d8a6b);
+rock(-3, 2, 2.4, 8, 0x9a7b5a);
+rock(1, -3.5, 2.0, 15, 0xa08a7a);
+
+// ---- hand visuals ----
+function makeHand(color) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12),
+    new THREE.MeshStandardMaterial({ color, emissive:0x000000 }));
+  m.castShadow = true; m.visible = false; scene.add(m);
+  return m;
+}
+const handMeshL = makeHand(0x4dd0e1);
+const handMeshR = makeHand(0x26a69a);
+
+// ---- enemy robot (chaser) ----
+const enemy = new THREE.Group();
+const ebody = new THREE.Mesh(new THREE.BoxGeometry(1.1,1.4,0.7),
+  new THREE.MeshStandardMaterial({color:0xff6b6b, flatShading:true}));
+ebody.position.y = 1.1; ebody.castShadow = true;
+const ehead = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.7,0.7),
+  new THREE.MeshStandardMaterial({color:0xff8a8a}));
+ehead.position.y = 2.1; ehead.castShadow = true;
+const evisor = new THREE.Mesh(new THREE.BoxGeometry(0.82,0.18,0.05),
+  new THREE.MeshStandardMaterial({color:0xff2222, emissive:0xaa1111}));
+evisor.position.set(0,2.15,0.36);
+enemy.add(ebody, ehead, evisor);
+scene.add(enemy);
+
+// ---- physics constants (Player.cs analogues) ----
+const GRAVITY = 20;         // m/s^2 (free flight)
+const GRIP_GRAVITY = 7;     // reduced while gripping (you're braced)
+const ARM = 2.4;            // maxArmLength — reach & rope length
+const PULL = 22;            // reel toward anchor (Space / auto-grab pull)
+const MOVE = 26;            // WASD steer accel while gripping
+const AIR_MOVE = 5;         // tiny air control
+const MAX_SPEED = 22;       // maxJumpSpeed cap
+const EYE = 1.7;            // eye height above feet
+const BODY_R = 0.6;
+
+const player = {
+  pos: new THREE.Vector3(0, EYE, 30),
+  vel: new THREE.Vector3(),
+};
+const hands = {
+  left:  { gripping:false, anchor:new THREE.Vector3(), mesh:handMeshL },
+  right: { gripping:false, anchor:new THREE.Vector3(), mesh:handMeshR },
+};
+
+let best = 0, running = false, startTime = 0;
+const keys = {};
+let pressL = false, pressR = false;
+
+const raycaster = new THREE.Raycaster();
+const forward = new THREE.Vector3();
+const tmp = new THREE.Vector3();
+
+function tryGrab(hand) {
+  // raycast from the eye along view direction; stick if a surface is within reach
+  camera.getWorldDirection(forward);
+  raycaster.set(getEye(), forward);
+  raycaster.far = ARM + 0.6;
+  const hits = raycaster.intersectObjects(grabbables, false);
+  if (hits.length && hits[0].distance <= ARM + 0.4) {
+    hand.gripping = true;
+    hand.anchor.copy(hits[0].point);
+  }
+}
+
+function getEye() { return tmp.set(player.pos.x, player.pos.y, player.pos.z); }
+
+function reachAvailable() {
+  camera.getWorldDirection(forward);
+  raycaster.set(getEye(), forward);
+  raycaster.far = ARM + 0.6;
+  const hits = raycaster.intersectObjects(grabbables, false);
+  return hits.length && hits[0].distance <= ARM + 0.4;
+}
+
+function wasdDir() {
+  const dir = new THREE.Vector3();
+  const f = new THREE.Vector3(); camera.getWorldDirection(f);
+  const flat = new THREE.Vector3(f.x, 0, f.z).normalize();
+  const right = new THREE.Vector3().crossVectors(flat, new THREE.Vector3(0,1,0)).normalize();
+  if (keys['w']) dir.add(flat);
+  if (keys['s']) dir.sub(flat);
+  if (keys['d']) dir.add(right);
+  if (keys['a']) dir.sub(right);
+  // full 3D steer: also use where you're looking for vertical intent
+  if (keys['w']) dir.add(new THREE.Vector3(0, f.y, 0));
+  if (keys['s']) dir.add(new THREE.Vector3(0, -f.y, 0));
+  return dir.lengthSq() ? dir.normalize() : dir;
+}
+
+function update(dt) {
+  // handle grab intent
+  if (pressL && !hands.left.gripping)  tryGrab(hands.left);
+  if (!pressL) hands.left.gripping = false;
+  if (pressR && !hands.right.gripping) tryGrab(hands.right);
+  if (!pressR) hands.right.gripping = false;
+
+  const grips = [];
+  if (hands.left.gripping)  grips.push(hands.left);
+  if (hands.right.gripping) grips.push(hands.right);
+  const gripping = grips.length > 0;
+
+  // forces
+  const g = gripping ? GRIP_GRAVITY : GRAVITY;
+  player.vel.y -= g * dt;
+
+  if (gripping) {
+    for (const h of grips) {
+      // pull body toward anchor (you're pulling your hand -> body moves to hand)
+      tmp.copy(h.anchor).sub(player.pos);
+      const dist = tmp.length();
+      if (dist > 0.001) {
+        tmp.multiplyScalar(1/dist);
+        let pull = PULL * 0.35;                 // gentle constant pull-in
+        if (keys[' ']) pull += PULL;            // Space = reel in hard (climb)
+        player.vel.addScaledVector(tmp, pull * dt);
+      }
+    }
+    // WASD steer
+    const d = wasdDir();
+    if (d.lengthSq()) player.vel.addScaledVector(d, MOVE * dt);
+    player.vel.multiplyScalar(0.985); // grip damping so swings settle
+  } else {
+    // small air control
+    const d = wasdDir();
+    if (d.lengthSq()) player.vel.addScaledVector(d, AIR_MOVE * dt);
+    player.vel.x *= 0.998; player.vel.z *= 0.998;
+  }
+
+  // cap speed
+  if (player.vel.length() > MAX_SPEED) player.vel.setLength(MAX_SPEED);
+
+  // integrate
+  player.pos.addScaledVector(player.vel, dt);
+
+  // rope constraint: stay within ARM of each anchor
+  for (const h of grips) {
+    tmp.copy(player.pos).sub(h.anchor);
+    const d = tmp.length();
+    if (d > ARM) {
+      tmp.multiplyScalar(ARM / d);
+      player.pos.copy(h.anchor).add(tmp);
+      // remove outward velocity component (rope tug)
+      const n = tmp.normalize();
+      const vn = player.vel.dot(n);
+      if (vn > 0) player.vel.addScaledVector(n, -vn);
+    }
+  }
+
+  // ground + obstacle collision (keep body out)
+  collide();
+
+  // sync rig
+  yawObj.position.copy(player.pos);
+
+  // hand meshes
+  updateHandMesh(hands.left, pressL);
+  updateHandMesh(hands.right, pressR);
+
+  // reticle reach highlight
+  reticle.classList.toggle('reach', reachAvailable());
+  hLEl.className = hands.left.gripping ? 'on' : 'off';
+  hREl.className = hands.right.gripping ? 'on' : 'off';
+
+  // enemy
+  updateEnemy(dt);
+
+  // hud
+  const t = (performance.now() - startTime)/1000;
+  timeEl.textContent = t.toFixed(1) + 's';
+  speedEl.textContent = player.vel.length().toFixed(1);
+  if (t > best) { best = t; bestEl.textContent = best.toFixed(1)+'s'; }
+
+  // tag check
+  tmp.set(player.pos.x - enemy.position.x, 0, player.pos.z - enemy.position.z);
+  if (tmp.length() < 1.4 && Math.abs(player.pos.y - EYE - enemy.position.y) < 2.5) endGame(t);
+}
+
+function updateHandMesh(hand, pressed) {
+  if (hand.gripping) {
+    hand.mesh.visible = true;
+    hand.mesh.position.copy(hand.anchor);
+  } else if (pressed || true) {
+    // show hand floating in front at reach when not gripping
+    camera.getWorldDirection(forward);
+    hand.mesh.visible = true;
+    hand.mesh.position.copy(getEye()).addScaledVector(forward, ARM*0.75)
+      .add(new THREE.Vector3(hand===hands.left?-0.001:0.001,-0.25,0));
+  }
+  hand.mesh.material.emissive.setHex(hand.gripping ? 0x335500 : 0x000000);
+}
+
+function collide() {
+  // ground
+  if (player.pos.y < EYE) { player.pos.y = EYE; if (player.vel.y < 0) player.vel.y = 0; }
+  // obstacles (treat as spheres/cylinders -> push out horizontally, allow standing on top)
+  for (let i=1;i<grabbables.length;i++){
+    const o = grabbables[i];
+    o.geometry.computeBoundingSphere?.();
+    const bs = o.geometry.boundingSphere;
+    if (!bs) continue;
+    tmp.set(player.pos.x - o.position.x, 0, player.pos.z - o.position.z);
+    const horiz = tmp.length();
+    const rad = (bs.radius || 2) * 0.9;
+    const topY = o.position.y + (o.geometry.parameters.height ? o.geometry.parameters.height/2 : rad);
+    if (horiz < rad + BODY_R) {
+      if (player.pos.y - EYE > topY - 0.6 && player.vel.y <= 0) {
+        // land on top
+        player.pos.y = topY + EYE; if (player.vel.y < 0) player.vel.y = 0;
+      } else if (horiz > 0.001) {
+        // push out
+        tmp.multiplyScalar((rad + BODY_R) / horiz);
+        player.pos.x = o.position.x + tmp.x;
+        player.pos.z = o.position.z + tmp.z;
+      }
+    }
+  }
+}
+
+let enemyPhase = 0;
+function updateEnemy(dt) {
+  enemyPhase += dt;
+  const t = (performance.now() - startTime)/1000;
+  const speed = 3.2 + Math.min(t*0.05, 3.5);
+  tmp.set(player.pos.x - enemy.position.x, 0, player.pos.z - enemy.position.z);
+  const d = tmp.length();
+  if (d > 0.5) {
+    tmp.multiplyScalar(speed*dt/d);
+    enemy.position.x += tmp.x; enemy.position.z += tmp.z;
+  }
+  // face player + little bob
+  enemy.rotation.y = Math.atan2(player.pos.x - enemy.position.x, player.pos.z - enemy.position.z);
+  enemy.position.y = Math.abs(Math.sin(enemyPhase*8)) * 0.15;
+}
+
+// ---- game flow ----
+function reset() {
+  player.pos.set(0, EYE, 30); player.vel.set(0,0,0);
+  hands.left.gripping = hands.right.gripping = false;
+  enemy.position.set(0, 0, -20);
+  yawObj.rotation.set(0,0,0); pitchObj.rotation.set(0,0,0);
+  startTime = performance.now(); running = true;
+}
+function endGame(t) {
+  running = false;
+  document.exitPointerLock?.();
+  overlay.querySelector('h1').textContent = '⚡ TAGGED!';
+  overlay.querySelector('p').textContent = `You survived ${t.toFixed(1)}s. Build more momentum — grab, sling, release — to escape the robot.`;
+  startBtn.textContent = 'PLAY AGAIN';
+  overlay.classList.remove('hidden');
+}
+
+// ---- input / pointer lock ----
+startBtn.addEventListener('click', () => renderer.domElement.requestPointerLock());
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement === renderer.domElement) {
+    overlay.classList.add('hidden');
+    if (!running) reset();
+  } else if (running) {
+    overlay.querySelector('h1').textContent = 'PAUSED';
+    overlay.querySelector('p').textContent = 'Click to resume. No walking — grab surfaces and sling yourself.';
+    startBtn.textContent = 'RESUME';
+    overlay.classList.remove('hidden');
+    // keep running=true so timer/state persist; just wait for relock
+  }
+});
+
+const SENS = 0.0022;
+document.addEventListener('mousemove', e => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  yawObj.rotation.y -= e.movementX * SENS;
+  pitchObj.rotation.x -= e.movementY * SENS;
+  pitchObj.rotation.x = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, pitchObj.rotation.x));
+});
+document.addEventListener('mousedown', e => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  if (e.button === 0) pressL = true;
+  if (e.button === 2) pressR = true;
+});
+document.addEventListener('mouseup', e => {
+  if (e.button === 0) pressL = false;
+  if (e.button === 2) pressR = false;
+});
+document.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key===' ') e.preventDefault(); });
+addEventListener('keyup',   e => { keys[e.key.toLowerCase()] = false; });
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---- loop ----
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (running && document.pointerLockElement === renderer.domElement) update(dt);
+  renderer.render(scene, camera);
+}
+yawObj.position.copy(player.pos);
+animate();
+</script>
+</body>
+</html>
