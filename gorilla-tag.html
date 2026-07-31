@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jungle Tag — a Gorilla Tag-inspired mini game</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Trebuchet MS", system-ui, sans-serif;
+    background: #0d1b0f;
+    color: #eaffea;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    overflow: hidden;
+    user-select: none;
+  }
+  h1 { font-size: 1.4rem; margin: 10px 0 4px; letter-spacing: 1px; }
+  #hud { font-size: .9rem; opacity: .85; margin-bottom: 8px; }
+  #hud b { color: #ffd166; }
+  canvas {
+    background: linear-gradient(#7ec8e3 0%, #a8e063 55%, #56ab2f 100%);
+    border: 4px solid #2d4a2f;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.5);
+    touch-action: none;
+    max-width: 95vw;
+    max-height: 70vh;
+  }
+  #help { font-size: .8rem; opacity: .7; margin-top: 10px; text-align: center; line-height: 1.5; }
+  kbd {
+    background: #1e3320; border: 1px solid #3d5a3f; border-radius: 4px;
+    padding: 1px 6px; font-size: .75rem;
+  }
+  #overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; background: rgba(0,0,0,.75);
+    text-align: center; gap: 14px;
+  }
+  #overlay h2 { font-size: 2rem; color: #ffd166; }
+  #overlay button {
+    font: inherit; font-size: 1rem; padding: 10px 26px; cursor: pointer;
+    background: #ffd166; color: #22331f; border: none; border-radius: 8px;
+    font-weight: bold;
+  }
+  #overlay button:hover { background: #ffdd85; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <h1>🦍 JUNGLE TAG</h1>
+  <div id="hud">Round: <b id="round">1</b> &nbsp;•&nbsp; Best survival: <b id="best">0.0s</b> &nbsp;•&nbsp; Status: <b id="status">RUNNER</b></div>
+  <canvas id="game" width="720" height="440"></canvas>
+  <div id="help">
+    Swing through the jungle with momentum. <kbd>A</kbd>/<kbd>←</kbd> and <kbd>D</kbd>/<kbd>→</kbd> to move,
+    <kbd>Space</kbd>/<kbd>W</kbd>/<kbd>↑</kbd> to jump off platforms.<br>
+    You're the runner — dodge the <b style="color:#ff6b6b">infected gorilla</b>. Survive as long as you can!
+  </div>
+
+  <div id="overlay">
+    <h2 id="ovTitle">JUNGLE TAG</h2>
+    <p id="ovText">Outrun the infected gorilla. Momentum is everything — build speed and leap between platforms.</p>
+    <button id="startBtn">START</button>
+  </div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+const roundEl = document.getElementById('round');
+const bestEl = document.getElementById('best');
+const statusEl = document.getElementById('status');
+const overlay = document.getElementById('overlay');
+const ovTitle = document.getElementById('ovTitle');
+const ovText = document.getElementById('ovText');
+const startBtn = document.getElementById('startBtn');
+
+const GRAVITY = 0.6;
+const MOVE_ACCEL = 0.9;
+const FRICTION = 0.85;      // ground friction (slippery = momentum)
+const AIR_FRICTION = 0.98;
+const MAX_SPEED = 9;
+const JUMP_V = -13;
+
+// Platforms (x, y, w, h)
+const platforms = [
+  {x:0,   y:410, w:720, h:30},   // ground
+  {x:80,  y:330, w:130, h:16},
+  {x:300, y:280, w:140, h:16},
+  {x:540, y:340, w:150, h:16},
+  {x:200, y:200, w:120, h:16},
+  {x:430, y:170, w:140, h:16},
+  {x:40,  y:150, w:100, h:16},
+  {x:600, y:210, w:100, h:16},
+];
+
+function makeApe(x, y, color, isRunner) {
+  return { x, y, w:34, h:34, vx:0, vy:0, onGround:false, color, isRunner };
+}
+
+let player, enemy, keys, running, startTime, roundNum, best;
+
+function reset(full) {
+  player = makeApe(60, 360, '#c98a3a', true);
+  enemy  = makeApe(640, 360, '#ff6b6b', false);
+  keys = {};
+  running = true;
+  startTime = performance.now();
+  if (full) { roundNum = 1; best = 0; }
+  statusEl.textContent = 'RUNNER';
+  statusEl.style.color = '#eaffea';
+  roundEl.textContent = roundNum;
+}
+
+function rectHit(a, b) {
+  return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+}
+
+function physics(ape, ctrl) {
+  // horizontal control
+  if (ctrl) {
+    if (keys.left)  ape.vx -= MOVE_ACCEL;
+    if (keys.right) ape.vx += MOVE_ACCEL;
+    if (keys.jump && ape.onGround) { ape.vy = JUMP_V; ape.onGround = false; }
+  }
+  ape.vx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, ape.vx));
+  ape.vy += GRAVITY;
+
+  // horizontal move + wall bounds
+  ape.x += ape.vx;
+  if (ape.x < 0) { ape.x = 0; ape.vx *= -0.4; }
+  if (ape.x + ape.w > W) { ape.x = W - ape.w; ape.vx *= -0.4; }
+
+  // vertical move + platform collision
+  ape.y += ape.vy;
+  ape.onGround = false;
+  for (const p of platforms) {
+    if (rectHit(ape, p)) {
+      if (ape.vy > 0 && ape.y + ape.h - ape.vy <= p.y + 2) {
+        ape.y = p.y - ape.h; ape.vy = 0; ape.onGround = true;
+      } else if (ape.vy < 0 && ape.y - ape.vy >= p.y + p.h - 2) {
+        ape.y = p.y + p.h; ape.vy = 0;
+      }
+    }
+  }
+  // friction
+  ape.vx *= ape.onGround ? FRICTION : AIR_FRICTION;
+}
+
+function enemyAI() {
+  // Chase the player with momentum; jump when player is above or a wall blocks.
+  const dir = Math.sign(player.x - enemy.x);
+  const speedFactor = 0.6 + roundNum * 0.12; // gets faster each round
+  enemy.vx += dir * MOVE_ACCEL * speedFactor;
+  const playerAbove = player.y + player.h < enemy.y - 10;
+  if (enemy.onGround && (playerAbove || Math.random() < 0.03)) {
+    enemy.vy = JUMP_V * (0.8 + Math.random()*0.3);
+    enemy.onGround = false;
+  }
+  physics(enemy, false);
+}
+
+function drawApe(a) {
+  const cx = a.x + a.w/2;
+  ctx.fillStyle = a.color;
+  // body
+  ctx.beginPath();
+  ctx.roundRect(a.x, a.y+6, a.w, a.h-6, 8);
+  ctx.fill();
+  // head
+  ctx.beginPath();
+  ctx.arc(cx, a.y+8, 11, 0, Math.PI*2);
+  ctx.fill();
+  // face
+  ctx.fillStyle = '#f0d9b5';
+  ctx.beginPath();
+  ctx.ellipse(cx, a.y+10, 6, 5, 0, 0, Math.PI*2);
+  ctx.fill();
+  // eyes
+  ctx.fillStyle = '#222';
+  ctx.fillRect(cx-4, a.y+7, 2, 2);
+  ctx.fillRect(cx+2, a.y+7, 2, 2);
+  if (a.isRunner) { // little crown-ish tuft
+    ctx.fillStyle = '#ffd166';
+    ctx.fillRect(cx-2, a.y-6, 4, 5);
+  }
+}
+
+function drawJungle() {
+  // vines
+  ctx.strokeStyle = 'rgba(40,90,40,.5)';
+  ctx.lineWidth = 4;
+  for (let i=0;i<6;i++){
+    const x = 40 + i*130;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.quadraticCurveTo(x+15, 60, x, 120);
+    ctx.stroke();
+  }
+  // platforms
+  for (const p of platforms) {
+    ctx.fillStyle = p.h > 20 ? '#3e6b3a' : '#6b4423';
+    ctx.beginPath();
+    ctx.roundRect(p.x, p.y, p.w, p.h, 6);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(120,200,90,.6)';
+    ctx.fillRect(p.x, p.y, p.w, 4);
+  }
+}
+
+function endRound(caught) {
+  running = false;
+  const survived = (performance.now() - startTime) / 1000;
+  if (survived > best) best = survived;
+  bestEl.textContent = best.toFixed(1) + 's';
+  overlay.classList.remove('hidden');
+  if (caught) {
+    ovTitle.textContent = '🫥 TAGGED!';
+    ovText.textContent = `You survived ${survived.toFixed(1)}s. The gorilla got faster... try again?`;
+    startBtn.textContent = 'RETRY';
+  }
+}
+
+function loop() {
+  if (running) {
+    physics(player, true);
+    enemyAI();
+
+    // survive long enough -> advance a round (faster enemy)
+    const survived = (performance.now() - startTime) / 1000;
+    if (survived > best) { best = survived; bestEl.textContent = best.toFixed(1)+'s'; }
+    if (survived > 10 * roundNum) {
+      roundNum++;
+      roundEl.textContent = roundNum;
+      // flash status
+      statusEl.textContent = 'ROUND ' + roundNum + '!';
+      statusEl.style.color = '#ffd166';
+      setTimeout(()=>{ if(running){ statusEl.textContent='RUNNER'; statusEl.style.color='#eaffea';} }, 900);
+    }
+
+    if (rectHit(player, enemy)) endRound(true);
+  }
+
+  ctx.clearRect(0,0,W,H);
+  drawJungle();
+  drawApe(enemy);
+  drawApe(player);
+
+  // survival timer
+  if (running) {
+    const t = ((performance.now()-startTime)/1000).toFixed(1);
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.font = 'bold 20px Trebuchet MS';
+    ctx.fillText('⏱ ' + t + 's', 14, 30);
+  }
+  requestAnimationFrame(loop);
+}
+
+// Input
+function setKey(e, down) {
+  const k = e.key.toLowerCase();
+  if (k==='a'||k==='arrowleft')  keys.left = down;
+  if (k==='d'||k==='arrowright') keys.right = down;
+  if (k===' '||k==='w'||k==='arrowup') { keys.jump = down; if(down) e.preventDefault(); }
+}
+addEventListener('keydown', e=>setKey(e,true));
+addEventListener('keyup',   e=>setKey(e,false));
+
+// Touch controls (tap left/right half to move, tap top to jump)
+canvas.addEventListener('touchstart', e=>{
+  e.preventDefault();
+  for (const t of e.touches) {
+    const r = canvas.getBoundingClientRect();
+    const x = (t.clientX - r.left) / r.width;
+    const y = (t.clientY - r.top) / r.height;
+    if (y < 0.4) keys.jump = true;
+    else if (x < 0.5) keys.left = true;
+    else keys.right = true;
+  }
+}, {passive:false});
+canvas.addEventListener('touchend', e=>{
+  e.preventDefault();
+  keys.left = keys.right = keys.jump = false;
+}, {passive:false});
+
+startBtn.addEventListener('click', ()=>{
+  overlay.classList.add('hidden');
+  const full = !roundNum || startBtn.textContent === 'START';
+  reset(true);
+});
+
+// init idle state
+roundNum = 1; best = 0;
+player = makeApe(60,360,'#c98a3a',true);
+enemy  = makeApe(640,360,'#ff6b6b',false);
+keys = {}; running = false; startTime = performance.now();
+loop();
+</script>
+</body>
+</html>
