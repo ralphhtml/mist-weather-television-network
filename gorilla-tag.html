@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Jungle Tag — a Gorilla Tag-inspired mini game</title>
+<title>Robot Tag — a Gorilla Tag-inspired mini game</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -23,8 +23,8 @@
   #hud { font-size: .9rem; opacity: .85; margin-bottom: 8px; }
   #hud b { color: #ffd166; }
   canvas {
-    background: linear-gradient(#7ec8e3 0%, #a8e063 55%, #56ab2f 100%);
-    border: 4px solid #2d4a2f;
+    background: linear-gradient(#2b3a48 0%, #34506b 55%, #1c2a36 100%);
+    border: 4px solid #3a4a58;
     border-radius: 12px;
     box-shadow: 0 10px 40px rgba(0,0,0,.5);
     touch-action: none;
@@ -52,18 +52,18 @@
 </style>
 </head>
 <body>
-  <h1>🦍 JUNGLE TAG</h1>
+  <h1>🤖 ROBOT TAG</h1>
   <div id="hud">Round: <b id="round">1</b> &nbsp;•&nbsp; Best survival: <b id="best">0.0s</b> &nbsp;•&nbsp; Status: <b id="status">RUNNER</b></div>
   <canvas id="game" width="720" height="440"></canvas>
   <div id="help">
-    Swing through the jungle with momentum. <kbd>A</kbd>/<kbd>←</kbd> and <kbd>D</kbd>/<kbd>→</kbd> to move,
+    Boost through the factory with momentum. <kbd>A</kbd>/<kbd>←</kbd> and <kbd>D</kbd>/<kbd>→</kbd> to move,
     <kbd>Space</kbd>/<kbd>W</kbd>/<kbd>↑</kbd> to jump off platforms.<br>
-    You're the runner — dodge the <b style="color:#ff6b6b">infected gorilla</b>. Survive as long as you can!
+    You're the runner — dodge the <b style="color:#ff6b6b">corrupted robot</b>. Survive as long as you can!
   </div>
 
   <div id="overlay">
-    <h2 id="ovTitle">JUNGLE TAG</h2>
-    <p id="ovText">Outrun the infected gorilla. Momentum is everything — build speed and leap between platforms.</p>
+    <h2 id="ovTitle">ROBOT TAG</h2>
+    <p id="ovText">Outrun the corrupted robot. Momentum is everything — build speed and leap between platforms.</p>
     <button id="startBtn">START</button>
   </div>
 
@@ -99,15 +99,15 @@ const platforms = [
   {x:600, y:210, w:100, h:16},
 ];
 
-function makeApe(x, y, color, isRunner) {
-  return { x, y, w:34, h:34, vx:0, vy:0, onGround:false, color, isRunner };
+function makeBot(x, y, color, isRunner) {
+  return { x, y, w:34, h:34, vx:0, vy:0, onGround:false, color, isRunner, blink:0 };
 }
 
 let player, enemy, keys, running, startTime, roundNum, best;
 
 function reset(full) {
-  player = makeApe(60, 360, '#c98a3a', true);
-  enemy  = makeApe(640, 360, '#ff6b6b', false);
+  player = makeBot(60, 360, '#4dd0e1', true);
+  enemy  = makeBot(640, 360, '#ff6b6b', false);
   keys = {};
   running = true;
   startTime = performance.now();
@@ -165,35 +165,50 @@ function enemyAI() {
   physics(enemy, false);
 }
 
-function drawApe(a) {
+function drawBot(a) {
   const cx = a.x + a.w/2;
+  // body (metal chassis)
   ctx.fillStyle = a.color;
-  // body
   ctx.beginPath();
-  ctx.roundRect(a.x, a.y+6, a.w, a.h-6, 8);
+  ctx.roundRect(a.x, a.y+13, a.w, a.h-13, 5);
   ctx.fill();
-  // head
+  // chest panel
+  ctx.fillStyle = 'rgba(0,0,0,.25)';
+  ctx.fillRect(a.x+6, a.y+18, a.w-12, 9);
+  // status light on chest
+  ctx.fillStyle = a.isRunner ? '#b9ff66' : '#ffdd55';
   ctx.beginPath();
-  ctx.arc(cx, a.y+8, 11, 0, Math.PI*2);
+  ctx.arc(cx, a.y+22, 2.5, 0, Math.PI*2);
   ctx.fill();
-  // face
-  ctx.fillStyle = '#f0d9b5';
+  // head (boxy)
+  ctx.fillStyle = a.color;
   ctx.beginPath();
-  ctx.ellipse(cx, a.y+10, 6, 5, 0, 0, Math.PI*2);
+  ctx.roundRect(a.x+6, a.y-2, a.w-12, 15, 3);
   ctx.fill();
-  // eyes
-  ctx.fillStyle = '#222';
-  ctx.fillRect(cx-4, a.y+7, 2, 2);
-  ctx.fillRect(cx+2, a.y+7, 2, 2);
-  if (a.isRunner) { // little crown-ish tuft
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(cx-2, a.y-6, 4, 5);
-  }
+  // antenna
+  ctx.strokeStyle = a.color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx, a.y-2);
+  ctx.lineTo(cx, a.y-9);
+  ctx.stroke();
+  ctx.fillStyle = a.isRunner ? '#b9ff66' : '#ff3b3b';
+  ctx.beginPath();
+  ctx.arc(cx, a.y-10, 2.5, 0, Math.PI*2);
+  ctx.fill();
+  // visor eyes (glowing)
+  a.blink = (a.blink + 1) % 120;
+  const lit = a.blink > 8;
+  ctx.fillStyle = '#111';
+  ctx.fillRect(a.x+9, a.y+3, a.w-18, 6);
+  ctx.fillStyle = lit ? (a.isRunner ? '#66e0ff' : '#ff5252') : '#331111';
+  ctx.fillRect(cx-6, a.y+4, 4, 4);
+  ctx.fillRect(cx+2, a.y+4, 4, 4);
 }
 
-function drawJungle() {
-  // vines
-  ctx.strokeStyle = 'rgba(40,90,40,.5)';
+function drawFactory() {
+  // hanging cables / conduits
+  ctx.strokeStyle = 'rgba(80,110,140,.45)';
   ctx.lineWidth = 4;
   for (let i=0;i<6;i++){
     const x = 40 + i*130;
@@ -202,14 +217,22 @@ function drawJungle() {
     ctx.quadraticCurveTo(x+15, 60, x, 120);
     ctx.stroke();
   }
-  // platforms
+  // platforms (steel girders)
   for (const p of platforms) {
-    ctx.fillStyle = p.h > 20 ? '#3e6b3a' : '#6b4423';
+    ctx.fillStyle = p.h > 20 ? '#37474f' : '#546e7a';
     ctx.beginPath();
-    ctx.roundRect(p.x, p.y, p.w, p.h, 6);
+    ctx.roundRect(p.x, p.y, p.w, p.h, 4);
     ctx.fill();
-    ctx.fillStyle = 'rgba(120,200,90,.6)';
-    ctx.fillRect(p.x, p.y, p.w, 4);
+    // hazard stripe on top edge
+    ctx.fillStyle = 'rgba(255,209,102,.8)';
+    ctx.fillRect(p.x, p.y, p.w, 3);
+    // rivets
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    for (let rx = p.x+8; rx < p.x+p.w-4; rx += 22) {
+      ctx.beginPath();
+      ctx.arc(rx, p.y + p.h/2 + 1, 1.6, 0, Math.PI*2);
+      ctx.fill();
+    }
   }
 }
 
@@ -220,8 +243,8 @@ function endRound(caught) {
   bestEl.textContent = best.toFixed(1) + 's';
   overlay.classList.remove('hidden');
   if (caught) {
-    ovTitle.textContent = '🫥 TAGGED!';
-    ovText.textContent = `You survived ${survived.toFixed(1)}s. The gorilla got faster... try again?`;
+    ovTitle.textContent = '⚡ TAGGED!';
+    ovText.textContent = `You survived ${survived.toFixed(1)}s. The robot got faster... try again?`;
     startBtn.textContent = 'RETRY';
   }
 }
@@ -247,9 +270,9 @@ function loop() {
   }
 
   ctx.clearRect(0,0,W,H);
-  drawJungle();
-  drawApe(enemy);
-  drawApe(player);
+  drawFactory();
+  drawBot(enemy);
+  drawBot(player);
 
   // survival timer
   if (running) {
@@ -296,8 +319,8 @@ startBtn.addEventListener('click', ()=>{
 
 // init idle state
 roundNum = 1; best = 0;
-player = makeApe(60,360,'#c98a3a',true);
-enemy  = makeApe(640,360,'#ff6b6b',false);
+player = makeBot(60,360,'#4dd0e1',true);
+enemy  = makeBot(640,360,'#ff6b6b',false);
 keys = {}; running = false; startTime = performance.now();
 loop();
 </script>
